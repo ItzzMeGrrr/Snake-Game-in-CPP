@@ -2,19 +2,21 @@
 #include<conio.h>
 #include<Windows.h>
 #include<string>
-#include "UserInterface.cpp"
+#include "tchar.h"
+#define KEY_UP 72
+#define KEY_DOWN 80
+#define KEY_LEFT 75
+#define KEY_RIGHT 77
 using namespace std;
 enum Direction { Up, Down, Right, Left };
 class MainClass
 {
 private:
-	int width, height, score = 0, oldScore = 0, snakeLength = 0, snakePartPosX[50], snakePartPosY[50];
-	int playerCharCount;
+	int width, height, score, oldScore, snakeLength, snakePartPosX[50], snakePartPosY[50];
 	char playerChar, fruitChar, borderChar, bodyChar;
-	bool start = false, printDebug = false, pauseGame = false, isGameOver = false;
+	bool printDebug = false, pauseGame = false, isGameOver = false;
 
-	
-	Direction PlayerDir = Right;
+	Direction PlayerDir;
 	COORD CursorCurrentPos, CursorDefaultPos, PlayerPos, FruitPos;
 	HANDLE hOutput = GetStdHandle(STD_OUTPUT_HANDLE);
 	CONSOLE_SCREEN_BUFFER_INFO ConsoleScreenBufferInfo;
@@ -22,66 +24,26 @@ private:
 	CONSOLE_FONT_INFOEX fonts;
 	DWORD dwWritten;
 	CONSOLE_CURSOR_INFO ConCurInfo;
-
 public:
 	//MainClass Constructor
-	MainClass(int width, int height, char borChar, char PlChar, char fChar, char body)
+	MainClass(char borChar, char PlChar, char fChar, char body)
 	{
-		GetConsoleScreenBufferInfo(hOutput, &ConsoleScreenBufferInfo);
-		this->width = ConsoleScreenBufferInfo.dwSize.X;
-		this->height = ConsoleScreenBufferInfo.srWindow.Bottom;
-		PlayerPos.X = 10;
-		PlayerPos.Y = 10;
 		borderChar = borChar;
 		playerChar = PlChar;
 		fruitChar = fChar;
 		bodyChar = body;
-		windowSize = ConsoleScreenBufferInfo.srWindow;
-
-		CONSOLE_FONT_INFOEX cfi;
-		cfi.cbSize = sizeof cfi;
-		cfi.nFont = 0;
-		cfi.dwFontSize.X = 13;
-		cfi.dwFontSize.Y = 13;
-		cfi.FontFamily = FF_DONTCARE;
-		cfi.FontWeight = FW_NORMAL;//
-		SetCurrentConsoleFontEx(hOutput, false, &cfi);
-
-		GetConsoleCursorInfo(hOutput, &ConCurInfo);
-		ConCurInfo.bVisible = false;
-		SetConsoleCursorInfo(hOutput, &ConCurInfo);	
+		InitAll();
 	}
 	//Starts Game
 	void StartGame()
 	{
+		InitAll();
 		DrawMap();
 		while (!isGameOver)
 		{
-			if (WindowSizeChanged())
-				DrawMap();
+			WindowSizeChanged();
 			SpawnFruit(false);
-			if (_kbhit())
-			{
-				int key = _getch();
-				if (key == 'W' || key == 'w')// && (!PlayerDir == Down))
-					PlayerDir = Up;
-				else if (key == 'S' || key == 's')// && (!PlayerDir == Up))
-					PlayerDir = Down;
-				else if (key == 'D' || key == 'd')// && (!PlayerDir == Left))
-					PlayerDir = Right;
-				else if (key == 'A' || key == 'a')// && (!PlayerDir == Right))
-					PlayerDir = Left;
-				else if (key == 'e')
-					score += 10;
-				else if (key == char(27))
-				{
-					GameOver("", true);
-				}
-				else if (key == char(32))
-				{
-					PauseGame();
-				}
-			}
+			CheckUserInput();
 			MovePlayer();
 			MoveSnakeBody();
 			CheckFruitSnakeCollid();
@@ -96,37 +58,54 @@ public:
 	{
 		this->width = ConsoleScreenBufferInfo.dwSize.X - 1;
 		this->height = ConsoleScreenBufferInfo.srWindow.Bottom - 5;
-		system("cls");
+		ClearScreen();
 		for (int H = 0; H < height; H++)
 		{
 			for (int W = 0; W < width; W++)
 			{
 				if (H == 0 || H == height - 1)
 				{
-					cout << "#";
+					cout << borderChar;
 				}
 				else if (W == 0 || W == width - 1)
 				{
-					cout << "#";
+					cout << borderChar;
 				}
 				else
-					cout << " ";
+					cout << char(32);
 			}
 			cout << endl;
 		}
 		DrawScore();
 		SpawnFruit(true);
 	}
-	//Draws snake according to COORD PlayerPos
+	//Draws Score
+	void DrawScore()
+	{
+		cout << '\r' << "SCORE: " << score;
+		if (((score / 10) % 2 == 0) || score == 10 || score == 0)
+		{
+			FillConsoleOutputAttribute(hOutput, FOREGROUND_BLUE, 7 + to_string(score).length(),
+				COORD{ CursorDefaultPos.X - (SHORT)(7 + (int)to_string(score).length()), CursorDefaultPos.Y }, &dwWritten);
+		}
+		else
+		{
+			FillConsoleOutputAttribute(hOutput, FOREGROUND_GREEN, 7 + to_string(score).length(),
+				COORD{ CursorDefaultPos.X - (SHORT)(7 + (int)to_string(score).length()), CursorDefaultPos.Y }, &dwWritten);
+		}
+	}
+
+	//Moves snake according to player input
 	void DrawPlayer()
 	{
-		PrintAtXY(PlayerPos.X, PlayerPos.Y, string(1, playerChar));
-		FillConsoleOutputAttribute(hOutput, FOREGROUND_GREEN | FOREGROUND_INTENSITY, 1, PlayerPos, &dwWritten);
+		if (!isGameOver) {
+			PrintAtXY(PlayerPos.X, PlayerPos.Y, string(1, playerChar));
+			FillConsoleOutputAttribute(hOutput, FOREGROUND_GREEN | FOREGROUND_INTENSITY, 1, PlayerPos, &dwWritten);
+		}
 	}
-	//Moves snake according to player input
+	//Draws Fruit(Coin) according to COORD FruitPos
 	void MovePlayer()
 	{
-		DrawBlank(PlayerPos.X, PlayerPos.Y);
 		if (PlayerDir == Up) {
 			PlayerPos.Y--;
 		}
@@ -142,97 +121,39 @@ public:
 		DrawPlayer();
 
 	}
-	//Draws Fruit(Coin) according to COORD FruitPos
-	void DrawFruit() {
-		PrintAtXY(FruitPos.X, FruitPos.Y, string(1, fruitChar));
-		FillConsoleOutputAttribute(hOutput, FOREGROUND_RED, 1, FruitPos, &dwWritten);
-	}
-	//Spawns a fruit, randomly on the screen
-	void SpawnFruit(BOOL ForceDraw)
+	//Draws snake's body
+	void DrawSnakeBody()
 	{
-		if (ScoreChanged() || ForceDraw)
+		if (!isGameOver)
 		{
-			int a = (int)malloc(sizeof(int));
-			srand(a);
-			FruitPos.X = abs(rand() % ConsoleScreenBufferInfo.dwSize.X - 1);
-			FruitPos.Y = abs(rand() % ConsoleScreenBufferInfo.srWindow.Bottom - 5);
-			if (FruitPos.X == 0 || FruitPos.Y == 0 || FruitPos.X >= ConsoleScreenBufferInfo.dwSize.X - 1 || FruitPos.Y >= ConsoleScreenBufferInfo.srWindow.Bottom - 5)
-				SpawnFruit(false);
-			else
-				DrawFruit();
+			for (int i = 0; i <= snakeLength; i++)
+			{
+				if (i != snakeLength)
+				{
+					if (snakePartPosX[i] != 0 && snakePartPosY[i] != 0)
+					{
+						if (i % 2 == 0)
+						{
+							PrintAtXY(snakePartPosX[i], snakePartPosY[i], string(1, bodyChar));
+							FillConsoleOutputAttribute(hOutput, FOREGROUND_GREEN, 1, COORD{ (SHORT)snakePartPosX[i], (SHORT)snakePartPosY[i] }, &dwWritten);
+						}
+						else if (i % 3 == 0)
+						{
+							PrintAtXY(snakePartPosX[i], snakePartPosY[i], string(1, bodyChar));
+							FillConsoleOutputAttribute(hOutput, FOREGROUND_BLUE, 1, COORD{ (SHORT)snakePartPosX[i], (SHORT)snakePartPosY[i] }, &dwWritten);
+						}
+						else
+						{
+							PrintAtXY(snakePartPosX[i], snakePartPosY[i], string(1, bodyChar));
+							FillConsoleOutputAttribute(hOutput, FOREGROUND_RED, 1, COORD{ (SHORT)snakePartPosX[i], (SHORT)snakePartPosY[i] }, &dwWritten);
+						}
+					}
+				}
 
+				if (i == snakeLength)
+					DrawBlank(snakePartPosX[i - 1], snakePartPosY[i - 1]);
+			}
 		}
-	}
-	//Sets Cursor Position
-	void SetCursorPos(int X, int Y)
-	{
-		InitOldCursorPos();
-		CursorCurrentPos.X = X;
-		CursorCurrentPos.Y = Y;
-		SetConsoleCursorPosition(hOutput, CursorCurrentPos);
-	}
-	//Sets cursor poition at the end of the drawing
-	void SetCursorDefaultPos()
-	{
-		SetConsoleCursorPosition(hOutput, CursorDefaultPos);
-	}
-	//Stores Cursor's Default Position in COORD CursorDefaultPos
-	void InitOldCursorPos()
-	{
-		GetConsoleScreenBufferInfo(hOutput, &ConsoleScreenBufferInfo);
-		CursorDefaultPos.X = ConsoleScreenBufferInfo.dwCursorPosition.X;
-		CursorDefaultPos.Y = ConsoleScreenBufferInfo.dwCursorPosition.Y;
-	}
-	//Checks if player took the Fruit(Coin)
-	void CheckFruitSnakeCollid()
-	{
-		if (FruitPos.X == PlayerPos.X && FruitPos.Y == PlayerPos.Y)
-		{
-			score += 10;
-			snakeLength++;
-			DrawScore();
-			SpawnFruit(true);
-		}
-	}
-	//Draws a space(blank) on X, Y coordinates
-	void DrawBlank(int X, int Y)
-	{
-		SetCursorPos(X, Y);
-		cout << " ";
-		SetCursorDefaultPos();
-	}
-	//Draws Score
-	void DrawScore()
-	{
-		cout << '\r' << "Score: " << score;
-	}
-	//Checks if game is over
-	void CheckGameOver()
-	{
-		if (PlayerPos.X <= 0 || PlayerPos.X >= width - 1 || PlayerPos.Y <= 0 || PlayerPos.Y >= height - 1)
-		{
-			GameOver("Hit the walls", false);
-		}
-	}
-	//Stops Game
-	void GameOver(string reason, BOOL userExited)
-	{
-		if (!userExited)
-		{
-			cout << endl << "GAME OVER!!" << endl << "Reason: " << reason << endl;
-		}
-		else
-		{
-			cout << endl << "Exited" << endl;
-		}
-		isGameOver = true;
-	}
-	//Prints str to X, Y Coordinates
-	void PrintAtXY(int X, int Y, string str)
-	{
-		SetCursorPos(X, Y);
-		cout << str;
-		SetCursorDefaultPos();
 	}
 	//Moves snake's body begind its head
 	void MoveSnakeBody()
@@ -277,43 +198,283 @@ public:
 		}
 		DrawSnakeBody();
 	}
-	//Draws snake's body
-	void DrawSnakeBody()
+	//Check for user input
+	void CheckUserInput()
 	{
-		for (int i = 0; i < snakeLength; i++)
+		if (_kbhit())
 		{
-			FillConsoleOutputAttribute(hOutput, BACKGROUND_BLUE, 1, COORD{ (SHORT)snakePartPosX[i], (SHORT)snakePartPosY[i] }, &dwWritten);
+			int key = _getch();
+			if ((key == 'W' || key == 'w' || key == KEY_UP) && PlayerDir != Down)
+				PlayerDir = Up;
+			if ((key == 'S' || key == 's' || key == KEY_DOWN) && PlayerDir != Up)
+				PlayerDir = Down;
+			if ((key == 'D' || key == 'd' || key == KEY_RIGHT) && PlayerDir != Left)
+				PlayerDir = Right;
+			if ((key == 'A' || key == 'a' || key == KEY_LEFT) && PlayerDir != Right)
+				PlayerDir = Left;
+			else if (key == char(27))//Escape Key
+			{
+				GameOver("", true);
+			}
+			else if (key == char(32))//Spacebar key
+			{
+				PauseGame();
+			}
+		}
+	}
+	//Draws snake according to COORD PlayerPos
+	void DrawFruit() {
+		if (!isGameOver)
+		{
+			if (FruitPos.X < width && FruitPos.Y < height)
+			{
+				PrintAtXY(FruitPos.X, FruitPos.Y, string(1, fruitChar));
+				FillConsoleOutputAttribute(hOutput, FOREGROUND_RED, 1, FruitPos, &dwWritten);
+			}
+			else
+			{
+				SpawnFruit(false);
+			}
+		}
+	}
+	//Spawns a fruit, randomly on the screen
+	void SpawnFruit(BOOL ForceDraw)
+	{
+		if (ScoreChanged() || ForceDraw)
+		{
+			int a = (int)malloc(sizeof(int));
+			srand(a);
+			FruitPos.X = rand() % width - 1;
+			FruitPos.Y = rand() % height - 1;
+			if (FruitPos.X <= 1 || FruitPos.Y <= 1 || FruitPos.X > width - 1 || FruitPos.Y > height - 1)
+				SpawnFruit(true);
+			else
+				DrawFruit();
+
+		}
+	}
+	//Checks if player took the Fruit(Coin)
+	void CheckFruitSnakeCollid()
+	{
+		if (FruitPos.X == PlayerPos.X && FruitPos.Y == PlayerPos.Y)
+		{
+			score += 10;
+			snakeLength++;
+			DrawScore();
+			SpawnFruit(true);
+		}
+	}
+
+	//Checks if game is over
+	void CheckGameOver()
+	{
+		if (PlayerPos.X <= 0 || PlayerPos.X >= width - 1 || PlayerPos.Y <= 0 || PlayerPos.Y >= height - 1)
+		{
+			GameOver("You hit the wall", false);
+		}
+		else if (PlayerHitBody())
+		{
+			GameOver("You tried to eat yourself ?!", false);
+		}
+	}
+	//Stops Game
+	void GameOver(string reason, BOOL userExited)
+	{
+		isGameOver = true;
+		if (!userExited)
+		{
+			SetFonts(13, 13);
+			cout << endl << "GAME OVER!!" << endl << "Reason: " << reason << endl;
+			cout << "Press Enter to Restart the Game, any other key to exit" << endl;
+			int key = _getch();
+			if (key == '\x0D')
+				RestartGame();
+			else {
+				SendKeyEvent((WORD)0x57);
+			}
+		}
+		else if (userExited)
+		{
+			cout << endl << "Exited!! " << endl << "Press Enter to Restart the Game, any other key to exit";
+			int key = _getch();
+			if (key == '\x0D')
+				RestartGame();
+			else
+				SendKeyEvent((WORD)0x57);
 		}
 	}
 	//Pauses Game
 	void PauseGame()
 	{
-		cout << "GAME PAUSED!! Press any key to continue.";
-		if (_getch())
+		string str = "GAME PAUSED!!Press any key to continue.";
+		cout << str;		if (_getch())
 		{
-			/*for (int i = 0; i <= 40; i++)
+			for (int i = 0; i < (int)str.length(); i++)
 			{
-				PrintAtXY(CursorDefaultPos.X - i, CursorDefaultPos.Y, " ");
-				FillConsoleOutputAttribute(hOutput, COLOR_BACKGROUND, 1, COORD{ (SHORT)i, CursorDefaultPos.Y}, &dwWritten);
-				PrintAtXY(CursorDefaultPos.X - i, CursorDefaultPos.Y, string(1, '\b'));
-			}*/
+				DrawBlank(CursorDefaultPos.X - i, CursorDefaultPos.Y);
+			}
+			CursorDefaultPos.X -= (SHORT)str.length();
 		}
 	}
-	//Returns true if window size changed, false otherwise
-	BOOL WindowSizeChanged()
+	//Restarts Game
+	void RestartGame()
+	{
+		StartGame();
+	}
+
+	//Sets Cursor Position
+	void SetCursorPos(int X, int Y)
+	{
+		InitOldCursorPos();
+		CursorCurrentPos.X = X;
+		CursorCurrentPos.Y = Y;
+		SetConsoleCursorPosition(hOutput, CursorCurrentPos);
+	}
+	//Sets cursor poition at the end of the drawing
+	void SetCursorDefaultPos()
+	{
+		SetConsoleCursorPosition(hOutput, CursorDefaultPos);
+	}
+	//Sets Font
+	void SetFonts(int fWidth, int fHeight)
+	{
+		CONSOLE_FONT_INFOEX cfi;
+		cfi.cbSize = sizeof cfi;
+		cfi.nFont = 0;
+		cfi.dwFontSize.X = fWidth;
+		cfi.dwFontSize.Y = fHeight;
+		cfi.FontFamily = FF_DONTCARE;
+		cfi.FontWeight = FW_NORMAL;
+		SetCurrentConsoleFontEx(hOutput, false, &cfi);
+	}
+	//Stores Cursor's Default Position in COORD CursorDefaultPos
+	void InitOldCursorPos()
 	{
 		GetConsoleScreenBufferInfo(hOutput, &ConsoleScreenBufferInfo);
-		if (windowSize.Bottom == ConsoleScreenBufferInfo.srWindow.Bottom && windowSize.Left == ConsoleScreenBufferInfo.srWindow.Left && windowSize.Right == ConsoleScreenBufferInfo.srWindow.Right && this->windowSize.Top == ConsoleScreenBufferInfo.srWindow.Top)
-			return false;
-		else
+		CursorDefaultPos.X = ConsoleScreenBufferInfo.dwCursorPosition.X;
+		CursorDefaultPos.Y = ConsoleScreenBufferInfo.dwCursorPosition.Y;
+	}
+	//Prints str to X, Y Coordinates
+	void PrintAtXY(int X, int Y, string str)
+	{
+		SetCursorPos(X, Y);
+		cout << str;
+		SetCursorDefaultPos();
+	}
+	//Draws a space(blank) on X, Y coordinates
+	void DrawBlank(int X, int Y)
+	{
+		if (X != 0 && Y != 0)
 		{
-			this->width = ConsoleScreenBufferInfo.dwSize.X - 1;
-			this->height = ConsoleScreenBufferInfo.srWindow.Bottom - 5;
-			windowSize = ConsoleScreenBufferInfo.srWindow;
-			return true;
+			SetCursorPos(X, Y);
+			cout << char(32);
+			SetCursorDefaultPos();
 		}
 	}
-	//Returns true if score changed false otherwise
+	//Initializes All needed variables
+	void InitAll()
+	{
+		SetFonts(13, 13);
+		MaximizeWindow();
+		InitWindowSize();
+		HideCursor();
+		snakeLength = 3;
+		PlayerDir = Right;
+		PlayerPos.X = 10;
+		PlayerPos.Y = 10;
+		score = 0;
+		oldScore = 0;
+		isGameOver = false;
+		pauseGame = false;
+		for (int i = 0; i < 50; i++)
+		{
+			snakePartPosX[i] = NULL;
+			snakePartPosY[i] = NULL;
+		}
+
+	}
+	//Initializes windowSize
+	void InitWindowSize()
+	{
+		GetConsoleScreenBufferInfo(hOutput, &ConsoleScreenBufferInfo);
+		this->width = ConsoleScreenBufferInfo.dwSize.X - 2;
+		this->height = ConsoleScreenBufferInfo.srWindow.Bottom - 5;
+		windowSize = ConsoleScreenBufferInfo.srWindow;
+	}
+	//Maximizes Window
+	void MaximizeWindow()
+	{
+		HWND hWnd;
+		SetConsoleTitle(_T("Snake Game"));
+		hWnd = FindWindow(NULL, _T("Snake Game"));
+		HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+		COORD NewSBSize = GetLargestConsoleWindowSize(hOut);
+		SMALL_RECT DisplayArea = { 0, 0, 0, 0 };
+		SetConsoleScreenBufferSize(hOut, NewSBSize);
+		DisplayArea.Right = NewSBSize.X - 1;
+		DisplayArea.Bottom = NewSBSize.Y - 1;
+		SetConsoleWindowInfo(hOut, TRUE, &DisplayArea);
+		ShowWindow(hWnd, SW_MAXIMIZE);
+	}
+	//Returns true if window size changed, false otherwise
+	void WindowSizeChanged()
+	{
+		GetConsoleScreenBufferInfo(hOutput, &ConsoleScreenBufferInfo);
+		if (windowSize.Bottom == ConsoleScreenBufferInfo.srWindow.Bottom && windowSize.Left == ConsoleScreenBufferInfo.srWindow.Left && windowSize.Right == ConsoleScreenBufferInfo.srWindow.Right && this->windowSize.Top == ConsoleScreenBufferInfo.srWindow.Top);
+		else
+		{
+			ClearScreen();
+			SetFonts(13, 13);
+			cout << "Window Size changed, have to restart the game. press any key to restart, ESC to exit.";
+			int key = _getch();
+			if (key == char(27))
+			{
+				GameOver("", true);
+			}
+			else
+			{
+				RestartGame();
+			}
+		}
+	}
+
+	//Clears Console Screen
+	void ClearScreen()
+	{
+		system("cls");
+	}
+	//Sends KeyEvent
+	void SendKeyEvent(WORD w)
+	{
+		INPUT input;
+		WORD vkey = w; // see link below
+		input.type = INPUT_KEYBOARD;
+		input.ki.wScan = MapVirtualKey(vkey, MAPVK_VK_TO_VSC);
+		input.ki.time = 0;
+		input.ki.dwExtraInfo = 0;
+		input.ki.wVk = vkey;
+		input.ki.dwFlags = 0; // there is no KEYEVENTF_KEYDOWN
+		SendInput(1, &input, sizeof(INPUT));
+
+		input.ki.dwFlags = KEYEVENTF_KEYUP;
+		SendInput(1, &input, sizeof(INPUT));
+	}
+	//Hides Cursor
+	void HideCursor()
+	{
+		GetConsoleCursorInfo(hOutput, &ConCurInfo);
+		ConCurInfo.bVisible = false;
+		SetConsoleCursorInfo(hOutput, &ConCurInfo);
+	}
+	//Returns true if player hits its body
+	BOOL PlayerHitBody()
+	{
+		for (int i = 0; i < snakeLength; i++)
+			if (PlayerPos.X == snakePartPosX[i] && PlayerPos.Y == snakePartPosY[i])
+				return true;
+		return false;
+	}
+	//Returns true if score changed, false otherwise
 	BOOL ScoreChanged()
 	{
 		if (score == oldScore)
@@ -327,13 +488,6 @@ public:
 };
 int main()
 {
-	LPCSTR ConsoleTitle = "Snake Game";
-	SetConsoleTitle(ConsoleTitle);
-	MainClass MC = MainClass(50, 20, '#', 'O', 'Q', char(153));
-	//UI ui = UI();
+	MainClass MC = MainClass(char(178), char(153), char(234), char(219));
 	MC.StartGame();
-	//ui.StartMenu();
-	_getch();
-	return 0;
 }
-
