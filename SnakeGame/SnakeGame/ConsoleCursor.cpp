@@ -486,8 +486,8 @@ public:
 		}
 	}
 };
-int main()
-{
-	MainClass MC = MainClass(char(178), char(153), char(234), char(219));
-	MC.StartGame();
-}
+//int main()
+//{
+//	MainClass MC = MainClass(char(178), char(153), char(234), char(219));
+//	MC.StartGame();
+//}
