@@ -1,4 +1,4 @@
-# Snake-Game-in-CPP: Simple Snake Game in C++ using Windows.h utility.
+# Snake-Game-in-CPP:<br> Simple Snake Game in C++
 Classic Snake game in c++.
 ![Start Menu](/StartMenu.png)
 ![Game Play](/Game.png)
